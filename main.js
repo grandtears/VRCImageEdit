@@ -10,6 +10,7 @@ const state = {
   rot: 0,       // 0,90,180,270
   flipX: false, // 左右
   flipY: false, // 上下
+  filename: null, // ファイル名
 };
 
 function setCanvasSizeForState() {
@@ -56,6 +57,8 @@ fileInput.addEventListener("change", (e) => {
 
   const url = URL.createObjectURL(file);
   const img = new Image();
+
+  state.filename = file.name.replace(/\.[^/.]+$/, "");
 
   img.onload = () => {
     URL.revokeObjectURL(url);
@@ -110,9 +113,22 @@ document.getElementById("reset").onclick = () => {
 // ダウンロード
 document.getElementById("download").onclick = () => {
   if (!state.img) return;
+
+  const now = new Date();
+  const timestamp =
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0") + "_" +
+    String(now.getHours()).padStart(2, "0") +
+    String(now.getMinutes()).padStart(2, "0") +
+    String(now.getSeconds()).padStart(2, "0");
+
+  const baseName = state.filename || "image";
+  const fileName = `${baseName}_${timestamp}.png`;
+
   const a = document.createElement("a");
-  a.download = "edited.png";
   a.href = canvas.toDataURL("image/png");
+  a.download = fileName;
   a.click();
 };
 
