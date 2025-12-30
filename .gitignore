@@ -1,0 +1,30 @@
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Vite / Build
+# =========================
+dist/
+.vite/
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+
+# =========================
+# Environment
+# =========================
+.env
+.env.*
