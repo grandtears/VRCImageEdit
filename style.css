@@ -198,9 +198,10 @@ button.wide {
 }
 
 canvas {
+  display: block;
   width: 100%;
   height: auto;
-  min-height: 260px;
+  aspect-ratio: auto;
   background: var(--canvas);
   border: 1px dashed rgba(17, 24, 39, 0.28);
   border-radius: 8px;
