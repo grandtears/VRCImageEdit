@@ -377,10 +377,19 @@ function resizeRect(rect, action, point) {
 function clampRect(rect) {
   let { x, y, w, h } = rect;
   const minSize = Math.max(1, Math.min(canvas.width, canvas.height) * 0.03);
-  w = Math.min(Math.max(w, minSize), canvas.width);
-  h = Math.min(Math.max(h, minSize), canvas.height);
-  x = Math.min(Math.max(x, 0), canvas.width - w);
-  y = Math.min(Math.max(y, 0), canvas.height - h);
+  if (state.crop.ratio > 0) {
+    const ratio = state.crop.ratio;
+    w = Math.max(w, minSize, minSize * ratio);
+    h = w / ratio;
+    const scale = Math.min(1, canvas.width / w, canvas.height / h);
+    w *= scale;
+    h *= scale;
+  } else {
+    w = Math.min(Math.max(w, minSize), canvas.width);
+    h = Math.min(Math.max(h, minSize), canvas.height);
+  }
+  x = Math.max(0, Math.min(x, canvas.width - w));
+  y = Math.max(0, Math.min(y, canvas.height - h));
   return { x, y, w, h };
 }
 
