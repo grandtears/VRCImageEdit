@@ -1,4 +1,5 @@
 import "./style.css";
+import { pixelate } from "./mosaic.js";
 
 const fileInput = document.getElementById("file");
 const canvas = document.getElementById("c");
@@ -19,6 +20,10 @@ const buttons = {
 
 const ratioButtons = [...document.querySelectorAll("[data-ratio]")];
 const cropTools = document.getElementById("cropTools");
+const mosaicTools = document.getElementById("mosaicTools");
+const mosaicMode = document.getElementById("mosaicMode");
+const applyMosaic = document.getElementById("applyMosaic");
+const mosaicButtons = [...document.querySelectorAll("[data-mosaic]")];
 
 const state = {
   img: null,
@@ -27,6 +32,7 @@ const state = {
   flipX: false,
   flipY: false,
   filename: null,
+  mosaic: { enabled: false, size: 16, rect: null, start: null, pointerId: null },
   crop: {
     enabled: false,
     ratio: 0,
@@ -149,6 +155,11 @@ function render(showOverlay = true) {
   ctx.drawImage(state.img, -state.img.width / 2, -state.img.height / 2);
   ctx.restore();
 
+  if (showOverlay && state.mosaic.enabled && state.mosaic.rect) {
+    drawMosaic();
+    drawCropOverlay(state.mosaic.rect);
+  }
+
   if (state.crop.enabled && !state.crop.rect) {
     state.crop.rect = makeInitialCropRect(cw, ch, state.crop.ratio);
   }
@@ -228,6 +239,7 @@ function handlePoints(rect) {
 
 function setCropEnabled(enabled) {
   if (!state.img) return;
+  if (enabled) resetMosaic();
   state.crop.enabled = enabled;
   state.crop.drag = null;
   cropTools.hidden = !enabled;
@@ -288,6 +300,17 @@ function hitTest(point) {
 }
 
 function pointerDown(event) {
+  if (state.mosaic.enabled) {
+    if (state.mosaic.pointerId !== null) return;
+    event.preventDefault();
+    state.mosaic.start = boundedPoint(event);
+    state.mosaic.rect = null;
+    state.mosaic.pointerId = event.pointerId;
+    applyMosaic.disabled = true;
+    canvas.setPointerCapture(event.pointerId);
+    render();
+    return;
+  }
   if (!state.crop.enabled || !state.crop.rect) return;
   event.preventDefault();
   const point = canvasPoint(event);
@@ -310,6 +333,19 @@ function pointerDown(event) {
 }
 
 function pointerMove(event) {
+  if (state.mosaic.start && state.mosaic.pointerId === event.pointerId) {
+    event.preventDefault();
+    const point = boundedPoint(event);
+    const start = state.mosaic.start;
+    const w = Math.abs(point.x - start.x);
+    const h = Math.abs(point.y - start.y);
+    state.mosaic.rect = w && h
+      ? { x: Math.min(point.x, start.x), y: Math.min(point.y, start.y), w, h }
+      : null;
+    applyMosaic.disabled = !state.mosaic.rect;
+    render();
+    return;
+  }
   const drag = state.crop.drag;
   if (!drag) return;
   event.preventDefault();
@@ -324,6 +360,17 @@ function pointerMove(event) {
 }
 
 function pointerUp(event) {
+  if (state.mosaic.pointerId === event.pointerId) {
+    if (event.type === "pointercancel") {
+      state.mosaic.rect = null;
+      applyMosaic.disabled = true;
+    } else pointerMove(event);
+    state.mosaic.start = null;
+    state.mosaic.pointerId = null;
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    render();
+    return;
+  }
   if (!state.crop.drag) return;
   state.crop.drag = null;
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
@@ -428,6 +475,70 @@ function imageDataToImage(imageData) {
   });
 }
 
+function boundedPoint(event) {
+  const point = canvasPoint(event);
+  return {
+    x: Math.max(0, Math.min(canvas.width, Math.round(point.x))),
+    y: Math.max(0, Math.min(canvas.height, Math.round(point.y))),
+  };
+}
+
+function resetMosaic() {
+  const id = state.mosaic.pointerId;
+  if (id !== null && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  Object.assign(state.mosaic, { enabled: false, rect: null, start: null, pointerId: null });
+  mosaicTools.hidden = true;
+  mosaicMode.classList.remove("active");
+  applyMosaic.disabled = true;
+}
+
+function drawMosaic() {
+  const { x, y, w, h } = state.mosaic.rect;
+  const region = ctx.getImageData(x, y, w, h);
+  const size = Math.max(2, Math.round(state.mosaic.size * Math.min(canvas.width, canvas.height) / 1000));
+  ctx.putImageData(pixelate(region, size), x, y);
+}
+
+mosaicMode.onclick = () => {
+  if (!state.img) return;
+  const enabled = !state.mosaic.enabled;
+  resetMosaic();
+  if (enabled) {
+    setCropEnabled(false);
+    state.mosaic.enabled = true;
+    mosaicTools.hidden = false;
+    mosaicMode.classList.add("active");
+  }
+  render();
+};
+document.getElementById("cancelMosaic").onclick = () => { resetMosaic(); render(); };
+mosaicButtons.forEach((button) => {
+  button.onclick = () => {
+    state.mosaic.size = Number(button.dataset.mosaic);
+    mosaicButtons.forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    render();
+  };
+});
+applyMosaic.onclick = () => {
+  if (!state.img || !state.mosaic.rect || state.mosaic.start) return;
+  render(false);
+  drawMosaic();
+  const result = document.createElement("canvas");
+  result.width = canvas.width;
+  result.height = canvas.height;
+  result.getContext("2d").drawImage(canvas, 0, 0);
+  state.img = result;
+  state.rot = 0;
+  state.flipX = false;
+  state.flipY = false;
+  resetMosaic();
+  render();
+};
+
 fileInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -444,6 +555,7 @@ fileInput.addEventListener("change", (event) => {
     state.flipX = false;
     state.flipY = false;
     resetCropState();
+    resetMosaic();
     render();
   };
 
@@ -457,18 +569,21 @@ fileInput.addEventListener("change", (event) => {
 
 buttons.flipX.onclick = () => {
   if (!state.img) return;
+  resetMosaic();
   state.flipX = !state.flipX;
   render();
 };
 
 buttons.flipY.onclick = () => {
   if (!state.img) return;
+  resetMosaic();
   state.flipY = !state.flipY;
   render();
 };
 
 buttons.rotL.onclick = () => {
   if (!state.img) return;
+  resetMosaic();
   state.rot = (state.rot - 90 + 360) % 360;
   state.crop.rect = null;
   render();
@@ -476,6 +591,7 @@ buttons.rotL.onclick = () => {
 
 buttons.rotR.onclick = () => {
   if (!state.img) return;
+  resetMosaic();
   state.rot = (state.rot + 90) % 360;
   state.crop.rect = null;
   render();
@@ -488,6 +604,7 @@ buttons.reset.onclick = () => {
   state.flipX = false;
   state.flipY = false;
   resetCropState();
+  resetMosaic();
   render();
 };
 
